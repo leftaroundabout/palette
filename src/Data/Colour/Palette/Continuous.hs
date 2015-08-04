@@ -31,6 +31,8 @@ import           Data.Colour.RGBSpace.HSV
 import           Data.Colour.Names
 import           Data.Colour.Palette.Types
 import qualified Data.Array as Arr
+import           Data.Array ((!))
+import           Data.Monoid
 
 type DiscretePalette = [Kolor]
 type ContinuousPalette = Double -> Kolor
@@ -67,15 +69,35 @@ data InterpolationKind
                          --   in the palette. The simplest and fastest interpolation,
                          --   but generally only looks good if the discrete palette
                          --   is already pretty smooth resolved.
+   | CubicInterpolate    -- ^ Catmull-Rom spline. Should be best for most applications.
+                         --   Note that this can possibly leave the colour gamut.
+   | StepTruncate        -- ^ No interpolation, just use the colour closest to the given index.
 
 interpolatePalette :: PaletteExtension -> DiscretePalette -> ContinuousPalette
+interpolatePalette _ [] = const mempty
+interpolatePalette (PaletteExtension IndexDomain StepTruncate) cols = contin
+ where cv = Arr.listArray (0,m) cols
+       m = length cols - 1
+       contin = (cv Arr.!) . min m . max 0 . round
 interpolatePalette (PaletteExtension IndexDomain LinearInterpolate) cols = contin
  where cv = Arr.listArray (0,m) cols
        m = length cols - 1
        contin x
-        | x <= 0               = cv Arr.! 0
-        | x >= fromIntegral m  = cv Arr.! m
-        | x' <- floor x        = blend (x - fromIntegral x') (cv Arr.! succ x') (cv Arr.! x')
+        | x <= 0               = cv ! 0
+        | x >= fromIntegral m  = cv ! m
+        | x' <- floor x        = blend (x - fromIntegral x') (cv ! succ x') (cv ! x')
+interpolatePalette (PaletteExtension IndexDomain CubicInterpolate) cols = contin
+ where cv = Arr.listArray (-1,m+1) $ [head cols] ++ cols ++ [last cols]
+       m = length cols - 1
+       contin x
+        | x <= 0               = cv ! 0
+        | x >= fromIntegral m  = cv ! m
+        | x' <- floor x        = let t = x - fromIntegral x'
+                                 in affineCombo [ ( t * ((2-t)*t - 1)/2,   cv ! (x'-1) )
+                                                , ( (t^2*(3*t - 5) + 2)/2, cv ! x'     )
+                                                , ( t * ((4-3*t)*t + 1)/2, cv ! (x'+1) ) ]
+                                                                         ( cv ! (x'+2) )
+       sdiff (RGB r g b) (RGB r' g' b') = RGB (r'-r) (g'-g) (b'-b)
 interpolatePalette (PaletteExtension NormalisedDomain intp) cols
    = interpolatePalette (PaletteExtension IndexDomain intp) cols . ((m-1)*)
  where m = fromIntegral $ length cols
@@ -84,4 +106,7 @@ interpolatePalette (PaletteExtension SymNormalisedDomain intp) cols
  where m = fromIntegral $ length cols
 interpolatePalette (PaletteExtension CompleteRealsDomain intp) cols
    = interpolatePalette (PaletteExtension SymNormalisedDomain intp) cols . tanh
+
+
+
 
