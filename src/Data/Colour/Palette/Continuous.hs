@@ -10,7 +10,7 @@
 -----------------------------------------------------------------------------
 
 module Data.Colour.Palette.Continuous
-       ( -- * Interpolate a discrete palette
+       (
          smoothPalette
          -- * Type synonyms
 
@@ -83,10 +83,13 @@ instance Default InterpolationDomain where
 data InterpolationKind
    = LinearInterpolate   -- ^ Affine interpolation between the two nearest indices
                          --   in the palette. The simplest and fastest interpolation,
-                         --   but generally only looks good if the discrete palette
-                         --   is already pretty smooth resolved.
-   | CubicInterpolate    -- ^ Catmull-Rom spline. Should be best default for most applications.
-                         --   Note that this can possibly leave the colour gamut.
+                         --   but if the discrete palette is not already pretty smooth
+                         --   resolved, the &#x201c;kink&#x201d; color may look a
+                         --   bit like a thin stripe in the spectrum.
+   | CubicInterpolate    -- ^ Catmull-Rom spline. Should be best for most applications.
+                         --   Note that this can possibly leave the colour gamut, but
+                         --   apparently not in a harmful way.
+                         --   This is the default setting.
    | StepTruncate        -- ^ No interpolation, just use the colour closest to the given index.
 
 instance Default InterpolationKind where
@@ -125,7 +128,8 @@ interpolatePalette (PaletteExtension SymNormalisedDomain intp) cols
    = interpolatePalette (PaletteExtension IndexDomain intp) cols . ((m-1)/2*) . (+1)
  where m = fromIntegral $ length cols
 interpolatePalette (PaletteExtension CompleteRealsDomain intp) cols
-   = interpolatePalette (PaletteExtension SymNormalisedDomain intp) cols . tanh
+   = interpolatePalette (PaletteExtension SymNormalisedDomain intp) cols . spread
+ where spread x = x / (1 + abs x)
 
 
 
