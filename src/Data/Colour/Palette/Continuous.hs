@@ -10,9 +10,11 @@
 -----------------------------------------------------------------------------
 
 module Data.Colour.Palette.Continuous
-       (-- * Type synonyms
+       ( -- * Interpolate a discrete palette
+         smoothPalette
+         -- * Type synonyms
 
-         Kolor
+       , Kolor
        , DiscretePalette
        , ContinuousPalette
 
@@ -33,6 +35,13 @@ import           Data.Colour.Palette.Types
 import qualified Data.Array as Arr
 import           Data.Array ((!))
 import           Data.Monoid
+import           Data.Default
+
+
+-- | Shortcut for @'interpolatePalette' 'def'@: cubic interpolation of a
+--   discrete palette to a colour-valued function on the real numbers.
+smoothPalette :: DiscretePalette -> ContinuousPalette
+smoothPalette = interpolatePalette def
 
 type DiscretePalette = [Kolor]
 type ContinuousPalette = Double -> Kolor
@@ -40,6 +49,8 @@ type ContinuousPalette = Double -> Kolor
 -- | Settings for how to extend a discrete palette to a continuous one.
 data PaletteExtension = PaletteExtension InterpolationDomain InterpolationKind
 
+instance Default PaletteExtension where
+  def = PaletteExtension def def
 
 -- | @'Lens'' 'PaletteExtension' 'InterpolationDomain'@
 interpolationRange :: Functor f => (InterpolationDomain -> f InterpolationDomain)
@@ -64,14 +75,23 @@ data InterpolationDomain
    | CompleteRealsDomain   -- ^ Spread the palette out to the whole of &#x211d;.
                            --   The outermost colours can then only be reached
                            --   as a limit /x/ &#x2192; &#xb1;&#x221e;.
+                           --   This is the default.
+
+instance Default InterpolationDomain where
+  def = CompleteRealsDomain
+
 data InterpolationKind
    = LinearInterpolate   -- ^ Affine interpolation between the two nearest indices
                          --   in the palette. The simplest and fastest interpolation,
                          --   but generally only looks good if the discrete palette
                          --   is already pretty smooth resolved.
-   | CubicInterpolate    -- ^ Catmull-Rom spline. Should be best for most applications.
+   | CubicInterpolate    -- ^ Catmull-Rom spline. Should be best default for most applications.
                          --   Note that this can possibly leave the colour gamut.
    | StepTruncate        -- ^ No interpolation, just use the colour closest to the given index.
+
+instance Default InterpolationKind where
+  def = CubicInterpolate
+
 
 interpolatePalette :: PaletteExtension -> DiscretePalette -> ContinuousPalette
 interpolatePalette _ [] = const mempty
