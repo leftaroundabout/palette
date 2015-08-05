@@ -39,7 +39,7 @@ import           Data.Default
 
 
 -- | Shortcut for @'interpolatePalette' 'def'@: cubic interpolation of a
---   discrete palette to a colour-valued function on the real numbers.
+--   finite discrete palette to a colour-valued function on the real numbers.
 smoothPalette :: DiscretePalette -> ContinuousPalette
 smoothPalette = interpolatePalette def
 
@@ -76,6 +76,13 @@ data InterpolationDomain
                            --   The outermost colours can then only be reached
                            --   as a limit /x/ &#x2192; &#xb1;&#x221e;.
                            --   This is the default.
+   | IndexCyclic           -- ^ Close the palette to a periodic function: after
+                           --   the last colour, wrap back to the first one.
+                           --   The palette indices still correspond to their
+                           --   original colours.
+   | NormalisedCyclic      -- ^ Close the palette to a function with
+                           --   period 2 &#x22c5; &#x3c0;.
+
 
 instance Default InterpolationDomain where
   def = CompleteRealsDomain
@@ -96,7 +103,9 @@ instance Default InterpolationKind where
   def = CubicInterpolate
 
 
-interpolatePalette :: PaletteExtension -> DiscretePalette -> ContinuousPalette
+interpolatePalette :: PaletteExtension
+                   -> DiscretePalette  -- ^ Must be finite.
+                   -> ContinuousPalette
 interpolatePalette _ [] = const mempty
 interpolatePalette (PaletteExtension IndexDomain StepTruncate) cols = contin
  where cv = Arr.listArray (0,m) cols
@@ -121,6 +130,12 @@ interpolatePalette (PaletteExtension IndexDomain CubicInterpolate) cols = contin
                                                 , ( t * ((4-3*t)*t + 1)/2, cv ! (x'+1) ) ]
                                                                          ( cv ! (x'+2) )
        sdiff (RGB r g b) (RGB r' g' b') = RGB (r'-r) (g'-g) (b'-b)
+interpolatePalette (PaletteExtension IndexCyclic intp) cols@(c:_)
+   = interpolatePalette (PaletteExtension IndexDomain intp) (last cols:cols++[c]) . (+1) . (`mod'`m)
+ where m = fromIntegral $ length cols
+interpolatePalette (PaletteExtension NormalisedCyclic intp) cols
+   = interpolatePalette (PaletteExtension IndexCyclic intp) cols . (m/2/pi *)
+ where m = fromIntegral $ length cols
 interpolatePalette (PaletteExtension NormalisedDomain intp) cols
    = interpolatePalette (PaletteExtension IndexDomain intp) cols . ((m-1)*)
  where m = fromIntegral $ length cols
@@ -132,5 +147,9 @@ interpolatePalette (PaletteExtension CompleteRealsDomain intp) cols
  where spread x = x / (1 + abs x)
 
 
+mod' :: RealFrac a => a -> a -> a
+n`mod'`d | n<0        = d - (-n)`mod'`d
+         | otherwise  = d * r
+ where (_,r) = properFraction $ n/d
 
 
